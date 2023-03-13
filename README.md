@@ -1,56 +1,10 @@
-# NHL Prediction Model 3.0
+# NHL-Model-3.0
+NHL2.0
 
-A python machine learning model to predict the outcomes of NHL games.
+A simple python prediction model I built for predicting NHL games.
 
-<!-- TABLE OF CONTENTS -->
-<div id="top"></div>
-<details open>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#overview">Overview</a></li>
-    <li><a href="#builtwith">Built With</a></li>
-    <li><a href="#dependencies">Dependencies</a></li>
-    <li><a href="#acknowledgements">Acknowledgements</a></li>
-  </ol>
-</details>
+The script first performs a correlation step for each team's past data, where it determines which data points are highly correlated and removes them. Then it performs a regression step where it undergoes a backward elimination procedure based on statistical significance.
+The remaining data and coefficients are then used along with the current data scraped from online to make predictions for the expected goals for and against each team. The final step is to use these predictions to predict the outcome of upcoming games, derived from the odds api.
 
-<!-- Overview -->
-<div id="overview"></div>
-
-## Overview
-
-A machine learning model designed to predict the outcome of NHL matches. The model has been trained on data from 2010 to 2022 predicting the expected goals for and against. Using a combination of those predictions and ELO ratings, I then calculate offensive and defensive strengths for each team, with which I can predict the outcome of upcoming games, and determine whether my odds have an edge over Vegas.
-   
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- Built With -->
-<div id="builtwith"></div>
-
-## Built With
-* [Python](https://python.org)
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- Dependencies -->
-<div id="dependencies"></div>
-
- ## Dependencies
- - numpy
- - pandas
- - seaborn
- - matplotlib.pyplot
- - sklearn.linear_model.Ridge
- - sklearn.metrics.mean_squared_error
- - sklearn.metrics
- - re
-
-<p align="right">(<a href="#top">back to top</a>)</p>
-
-<!-- Acknowledgements -->
-<div id="acknowledgements"></div>
-
- ## Acknowledgements
- 
- Data sourced from naturalstattrick.com
-
-<p align="right">(<a href="#top">backop</a>)</p>
+Dependencies:
+pandas, json, requests, time, datetime, random, sklearn, statsmodels, scipy, selenium, webdriver_manager, bs4, twilio.rest, itertools, tweepy
