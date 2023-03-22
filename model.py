@@ -229,12 +229,12 @@ def normalizeData(df):
     return df
 
 # normalize the past data
-past_home_df = normalizeData(past_home_df.drop(columns = ['Team'])) # drop team name
-past_away_df = normalizeData(past_away_df.drop(columns = ['Team'])) # drop team name
+past_home_df = past_home_df.drop(columns = ['Team']) # drop team name
+past_away_df = past_away_df.drop(columns = ['Team']) # drop team name
 
 # normalize the current data
-current_home_df = normalizeData(current_home_df)
-current_away_df = normalizeData(current_away_df)
+#current_home_df = normalizeData(current_home_df)
+#current_away_df = normalizeData(current_away_df)
 
 # =============================================== [--- Split Data  ---] ===============================================
 
@@ -320,11 +320,11 @@ current_home_ga_pred = ridge_home_ga.predict(current_home_ga)
 current_away_ga_pred = ridge_away_ga.predict(current_away_ga)
 
 # right now the predictions can be negative, so we need to make them all positive by adding the absolute value of the minimum prediction
-min_pred = min(min(current_home_gf_pred), min(current_away_gf_pred), min(current_home_ga_pred), min(current_away_ga_pred))
-current_home_gf_pred = current_home_gf_pred + abs(min_pred)
-current_away_gf_pred = current_away_gf_pred + abs(min_pred)
-current_home_ga_pred = current_home_ga_pred + abs(min_pred)
-current_away_ga_pred = current_away_ga_pred + abs(min_pred)    
+#min_pred = min(min(current_home_gf_pred), min(current_away_gf_pred), min(current_home_ga_pred), min(current_away_ga_pred))
+#current_home_gf_pred = current_home_gf_pred + abs(min_pred)
+#current_away_gf_pred = current_away_gf_pred + abs(min_pred)
+#current_home_ga_pred = current_home_ga_pred + abs(min_pred)
+#current_away_ga_pred = current_away_ga_pred + abs(min_pred)    
 
 # add the predictions to the dataframe
 predictions_df['Home Goals For'] = current_home_gf_pred
@@ -357,10 +357,10 @@ strengths_df['Away Attack Strength'] = predictions_df.apply(lambda row: calculat
 strengths_df['Away Defense Strength'] = predictions_df.apply(lambda row: calculate_defense_strength(row['Away Goals Against'], predictions_df.loc['Average']['Away Goals Against'], strengths_df.loc[row.name]['ELO']), axis = 1)
 
 # right now the spread between the best and worst teams in each category is too large, so we need to scale it down
-strengths_df['Home Attack Strength'] = strengths_df.apply(lambda row: row['Home Attack Strength'] / max(strengths_df['Home Attack Strength']), axis = 1)
-strengths_df['Home Defense Strength'] = strengths_df.apply(lambda row: row['Home Defense Strength'] / max(strengths_df['Home Defense Strength']), axis = 1)
-strengths_df['Away Attack Strength'] = strengths_df.apply(lambda row: row['Away Attack Strength'] / max(strengths_df['Away Attack Strength']), axis = 1)
-strengths_df['Away Defense Strength'] = strengths_df.apply(lambda row: row['Away Defense Strength'] / max(strengths_df['Away Defense Strength']), axis = 1)
+#strengths_df['Home Attack Strength'] = strengths_df.apply(lambda row: row['Home Attack Strength'] / max(strengths_df['Home Attack Strength']), axis = 1)
+#strengths_df['Home Defense Strength'] = strengths_df.apply(lambda row: row['Home Defense Strength'] / max(strengths_df['Home Defense Strength']), axis = 1)
+#strengths_df['Away Attack Strength'] = strengths_df.apply(lambda row: row['Away Attack Strength'] / max(strengths_df['Away Attack Strength']), axis = 1)
+#strengths_df['Away Defense Strength'] = strengths_df.apply(lambda row: row['Away Defense Strength'] / max(strengths_df['Away Defense Strength']), axis = 1)
 
 # get an overall strength for each team (high attack and low defense is good, low attack and high defense is bad) (value between 0 and 1)
 strengths_df['Overall Strength'] = strengths_df.apply(lambda row: (row['Home Attack Strength'] + row['Away Attack Strength']) - (row['Home Defense Strength'] + row['Away Defense Strength']), axis = 1)
@@ -379,6 +379,8 @@ def predict_game(home_team, away_team):
     away_team = remove_accents(away_team).decode("utf-8")
     home_attack_strength = strengths_df.loc[home_team]['Home Attack Strength']
     home_defense_strength = strengths_df.loc[home_team]['Home Defense Strength']
+    home_overall_strength = strengths_df.loc[home_team]['Overall Strength']
+    away_overall_strength = strengths_df.loc[away_team]['Overall Strength']
     
     away_attack_strength = strengths_df.loc[away_team]['Away Attack Strength']
     away_defense_strength = strengths_df.loc[away_team]['Away Defense Strength']
@@ -439,22 +441,40 @@ def get_odds(home_team, away_team):
     return home_odds , away_odds
 
 def clean_odds():
-    odds_response = requests.get(f'https://api.the-odds-api.com/v3/odds/?sport=icehockey_nhl&region=us&mkt=h2h&dateFormat=iso&apiKey={api_key}')
-    
-    odds_json = json.loads(odds_response.text)['data']
-    
-    simple_odds = []
+    odds_api_key = '8be3ba1d05ea7d3cda1d4ec6953e78c9'
+    odds_endpoint = 'https://api.the-odds-api.com/v4/sports/icehockey_nhl/odds'
 
-    for game in odds_json:
+
+# Get the odds for today's NHL games
+    params = {
+        'regions': 'us',
+        'oddsFormat': 'american',
+        'dateFormat': 'iso',
+        'apiKey': odds_api_key,
+        'sport': 'icehockey_nhl',
+        'date': today, 
+        'Markets' : 'h2h', 
+        'Bookmakers' : 'bet365'
+    }
+
+    response_odds = requests.get(odds_endpoint, params=params)
+    data_odds = response_odds.json()
+    simple_odds = []
+    for game in data_odds:
+        away_team = game['away_team']
         home_team = game['home_team']
-        # away team is the team in teams that is not the home team
-        away_team = [team for team in game['teams'] if team != home_team][0]
-        commence_time = game['commence_time']
+
+        if game['bookmakers'][0]['markets'][0]['outcomes'][0]['name'] == home_team :
+          home_odds = game['bookmakers'][0]['markets'][0]['outcomes'][0]['price']
+        else:
+          home_odds = game['bookmakers'][0]['markets'][0]['outcomes'][1]['price']
         
-        away_odds = game['sites'][0]['odds']['h2h'][0]
-        home_odds = game['sites'][0]['odds']['h2h'][1]
+        if game['bookmakers'][0]['markets'][0]['outcomes'][0]['name'] == away_team :
+          away_odds = game['bookmakers'][0]['markets'][0]['outcomes'][0]['price']
+        else:
+           away_odds = game['bookmakers'][0]['markets'][0]['outcomes'][1]['price']
         
-        simple_odds.append([home_team, away_team, home_odds, away_odds, commence_time])
+        simple_odds.append([home_team, away_team, home_odds, away_odds])
         
     return simple_odds
 
@@ -462,18 +482,14 @@ def calculate_picks(odds):
     for game in odds:
         given_home_odds = game[2]
         given_away_odds = game[3]
+        home_team = game[0]
+        away_team = game[1]
         
         my_home_odds, my_away_odds = get_odds(game[0], game[1])
         
-        # if the odds are better than the given odds, then bet on the team
-        if my_away_odds < given_away_odds and (given_away_odds - my_away_odds) > 0.2:
-            print(f"Bet on {game[1]} to win against {game[0]}")
-            print(f"Given odds: {decimal_to_american(given_away_odds)}, My odds: {decimal_to_american(my_away_odds)}")
-            print("-" * 50)
-        elif my_home_odds < given_home_odds and (given_home_odds - my_home_odds) > 0.12:
-            print(f"Bet on {game[0]} to win against {game[1]}")
-            print(f"Given odds: {decimal_to_american(given_home_odds)}, My odds: {decimal_to_american(my_home_odds)}")
-            print("-" * 50)
+        print(away_team, "vs", home_team)
+        print("away vegas odds : ", given_away_odds, "My odds :", decimal_to_american(my_away_odds))
+        print("home vegas odds : ", given_home_odds, "My odds :", decimal_to_american(my_home_odds))
         
         
 odds = clean_odds()
