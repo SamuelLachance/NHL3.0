@@ -337,10 +337,10 @@ predictions_df.loc['Average'] = predictions_df.mean()
 
 # create a attack strength and defense strength column (for home and away) (value between 0 and 1)
 def calculate_attack_strength(goals_for, average_goals_for, elo):
-    return ((goals_for / average_goals_for) * elo) + 0.5
+    return goals_for / average_goals_for #((goals_for / average_goals_for) * elo) + 0.5
 
 def calculate_defense_strength(goals_against, average_goals_against, elo):
-    return ((goals_against / average_goals_against) / (elo * 4)) + 0.5
+    return goals_against / average_goals_against #((goals_against / average_goals_against) / (elo * 4)) + 0.5
 
 strengths_df = pd.DataFrame(columns = ['Home Attack Strength', 'Home Defense Strength', 'Away Attack Strength', 'Away Defense Strength'])
 strengths_df['Team'] = predictions_df.index # add the team names
@@ -381,7 +381,6 @@ def predict_game(home_team, away_team):
     home_defense_strength = strengths_df.loc[home_team]['Home Defense Strength']
     home_overall_strength = strengths_df.loc[home_team]['Overall Strength']
     away_overall_strength = strengths_df.loc[away_team]['Overall Strength']
-    
     away_attack_strength = strengths_df.loc[away_team]['Away Attack Strength']
     away_defense_strength = strengths_df.loc[away_team]['Away Defense Strength']
     
@@ -407,7 +406,7 @@ def predict_game(home_team, away_team):
     away_prob = away_prob + (tie_prob / 2)
     home_prob = home_prob + (tie_prob / 2)
                 
-    return home_prob, away_prob
+    return home_prob, away_prob , home_expected_gf , away_expected_gf
 
 # print a heatmap of the team's strengths
 def illustrate_strengths():
@@ -433,12 +432,12 @@ def decimal_to_american(odds):
 
 # returns the odds for the away team and the home team (decimal)
 def get_odds(home_team, away_team):
-    home_prob, away_prob = predict_game(home_team, away_team)
+    home_prob, away_prob , home_goals, away_goals = predict_game(home_team, away_team)
     
     away_odds = round(1 / away_prob, 2)
     home_odds = round(1 / home_prob, 2)
     
-    return home_odds , away_odds
+    return home_odds , away_odds , home_goals , away_goals
 
 def clean_odds():
     odds_api_key = '8be3ba1d05ea7d3cda1d4ec6953e78c9'
@@ -485,11 +484,11 @@ def calculate_picks(odds):
         home_team = game[0]
         away_team = game[1]
         
-        my_home_odds, my_away_odds = get_odds(game[0], game[1])
+        my_home_odds, my_away_odds , home_goals , away_goals = get_odds(game[0], game[1])
         
         print(away_team, "vs", home_team)
-        print("away vegas odds : ", given_away_odds, "My odds :", decimal_to_american(my_away_odds))
-        print("home vegas odds : ", given_home_odds, "My odds :", decimal_to_american(my_home_odds))
+        print("Away Score :" , away_goals , "away vegas odds : ", given_away_odds, "My odds :", decimal_to_american(my_away_odds))
+        print("Home Score : ", home_goals , "home vegas odds : ", given_home_odds, "My odds :", decimal_to_american(my_home_odds))
         
         
 odds = clean_odds()
