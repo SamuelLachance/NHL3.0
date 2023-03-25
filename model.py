@@ -203,45 +203,13 @@ past_away_df = pd.read_csv('pastData/all_away_data.csv', usecols = ["Team","GP",
 
 # =============================================== [--- Data Pre-Processing  ---] ===============================================
 
-# normalize data
-def normalizeData(df):
-    df = df.drop(columns = ['GP']) # drop team name and GP column
-    
-    # replace any - with 0
-    df = df.replace('-', 0)
-    
-    # drop nan values
-    df = df.dropna()
-    
-    # convert all columns to float
-    for col in df.columns:
-        if col != 'Team':
-            df[col] = df[col].astype(float)
-            
-    # replace any inf with 0
-    df = df.replace([np.inf, -np.inf], 0)
-    
-    # normalize the data
-    for col in df.columns:
-        if col != 'Team':
-            df[col] = (df[col] - df[col].mean()) / df[col].std() # column = (column - mean) / std
-        
-    return df
-
-# normalize the past data
 past_home_df = past_home_df.drop(columns = ['Team']) # drop team name
 past_away_df = past_away_df.drop(columns = ['Team']) # drop team name
-
-# normalize the current data
-#current_home_df = normalizeData(current_home_df)
-#current_away_df = normalizeData(current_away_df)
 
 # =============================================== [--- Split Data  ---] ===============================================
 
 # split data into training and testing
 from sklearn.model_selection import train_test_split
-
-# my target variable is the goals for (GF/60) or goals against (GA/60)
 X_train_home_gf, X_test_home_gf, y_train_home_gf, y_test_home_gf = train_test_split(past_home_df.drop(columns = ['GF/60']), past_home_df['GF/60'], test_size = 0.2, random_state = 42)
 X_train_away_gf, X_test_away_gf, y_train_away_gf, y_test_away_gf = train_test_split(past_away_df.drop(columns = ['GF/60']), past_away_df['GF/60'], test_size = 0.2, random_state = 42)
 
@@ -253,6 +221,13 @@ X_train_away_ga, X_test_away_ga, y_train_away_ga, y_test_away_ga = train_test_sp
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_squared_error
 from sklearn.svm import SVR
+
+param_grid_xgb = {
+    'max_depth': 3,
+    'learning_rate': 0.1,
+    'n_estimators': 1000,
+    'gamma': 0
+}
 
 # ---- Build Models -----
 
@@ -288,18 +263,6 @@ print("Home Mean Squared Error Goals Against: " + str(mse_home_ga))
 print("Away Mean Squared Error Goals For: " + str(mse_away_gf))
 print("Away Mean Squared Error Goals Against: " + str(mse_away_ga))
 
-# =============================================== [--- Lasso Regression  ---] ===============================================
-# from sklearn.linear_model import Lasso
-
-# lasso = Lasso(alpha = 1.0) # create the model
-
-# lasso.fit(X_train_home_gf, y_train_home_gf) # fit the model
-
-# y_pred_home = lasso.predict(X_test_home_gf) # predict the goals for
-
-# mse = mean_squared_error(y_test_home_gf, y_pred_home) # calculate the mean squared error
-# print("Mean Squared Error: " + str(mse))
-
 
 # =============================================== [--- Predict on Current Data  ---] ===============================================
 # create a dataframe to hold the predictions
@@ -317,14 +280,7 @@ current_away_ga = current_away_df.drop(columns = ['GA/60', 'Team'])
 current_home_gf_pred = ridge_home_gf.predict(current_home_gf)
 current_away_gf_pred = ridge_away_gf.predict(current_away_gf)
 current_home_ga_pred = ridge_home_ga.predict(current_home_ga)
-current_away_ga_pred = ridge_away_ga.predict(current_away_ga)
-
-# right now the predictions can be negative, so we need to make them all positive by adding the absolute value of the minimum prediction
-#min_pred = min(min(current_home_gf_pred), min(current_away_gf_pred), min(current_home_ga_pred), min(current_away_ga_pred))
-#current_home_gf_pred = current_home_gf_pred + abs(min_pred)
-#current_away_gf_pred = current_away_gf_pred + abs(min_pred)
-#current_home_ga_pred = current_home_ga_pred + abs(min_pred)
-#current_away_ga_pred = current_away_ga_pred + abs(min_pred)    
+current_away_ga_pred = ridge_away_ga.predict(current_away_ga) 
 
 # add the predictions to the dataframe
 predictions_df['Home Goals For'] = current_home_gf_pred
@@ -337,10 +293,12 @@ predictions_df.loc['Average'] = predictions_df.mean()
 
 # create a attack strength and defense strength column (for home and away) (value between 0 and 1)
 def calculate_attack_strength(goals_for, average_goals_for, elo):
-    return goals_for / average_goals_for #((goals_for / average_goals_for) * elo) + 0.5
+    goal_based_strength = goals_for / average_goals_for
+    return goal_based_strength * (1 - elo) + elo
 
 def calculate_defense_strength(goals_against, average_goals_against, elo):
-    return goals_against / average_goals_against #((goals_against / average_goals_against) / (elo * 4)) + 0.5
+    goal_based_strength = goals_against / average_goals_against
+    return goal_based_strength * (1 - elo) + elo
 
 strengths_df = pd.DataFrame(columns = ['Home Attack Strength', 'Home Defense Strength', 'Away Attack Strength', 'Away Defense Strength'])
 strengths_df['Team'] = predictions_df.index # add the team names
@@ -355,25 +313,15 @@ strengths_df['Home Attack Strength'] = predictions_df.apply(lambda row: calculat
 strengths_df['Home Defense Strength'] = predictions_df.apply(lambda row: calculate_defense_strength(row['Home Goals Against'], predictions_df.loc['Average']['Home Goals Against'], strengths_df.loc[row.name]['ELO']), axis = 1)
 strengths_df['Away Attack Strength'] = predictions_df.apply(lambda row: calculate_attack_strength(row['Away Goals For'], predictions_df.loc['Average']['Away Goals For'], strengths_df.loc[row.name]['ELO']), axis = 1)
 strengths_df['Away Defense Strength'] = predictions_df.apply(lambda row: calculate_defense_strength(row['Away Goals Against'], predictions_df.loc['Average']['Away Goals Against'], strengths_df.loc[row.name]['ELO']), axis = 1)
-
-# right now the spread between the best and worst teams in each category is too large, so we need to scale it down
-#strengths_df['Home Attack Strength'] = strengths_df.apply(lambda row: row['Home Attack Strength'] / max(strengths_df['Home Attack Strength']), axis = 1)
-#strengths_df['Home Defense Strength'] = strengths_df.apply(lambda row: row['Home Defense Strength'] / max(strengths_df['Home Defense Strength']), axis = 1)
-#strengths_df['Away Attack Strength'] = strengths_df.apply(lambda row: row['Away Attack Strength'] / max(strengths_df['Away Attack Strength']), axis = 1)
-#strengths_df['Away Defense Strength'] = strengths_df.apply(lambda row: row['Away Defense Strength'] / max(strengths_df['Away Defense Strength']), axis = 1)
-
-# get an overall strength for each team (high attack and low defense is good, low attack and high defense is bad) (value between 0 and 1)
 strengths_df['Overall Strength'] = strengths_df.apply(lambda row: (row['Home Attack Strength'] + row['Away Attack Strength']) - (row['Home Defense Strength'] + row['Away Defense Strength']), axis = 1)
 
-# shift the overall strength so its between 0 and 1
-strengths_df['Overall Strength'] = strengths_df.apply(lambda row: row['Overall Strength'] + abs(min(strengths_df['Overall Strength'])), axis = 1)
 strengths_df['Overall Strength'] = strengths_df.apply(lambda row: row['Overall Strength'] / max(strengths_df['Overall Strength']), axis = 1)
 
 
 # =============================================== [--- Predict Games  ---] ===============================================
 from scipy.stats import poisson
+import xgboost as xgb
 
-# using the strengths of each team, predict the outcome of each game
 def predict_game(home_team, away_team):
     home_team = remove_accents(home_team).decode("utf-8")
     away_team = remove_accents(away_team).decode("utf-8")
@@ -384,41 +332,43 @@ def predict_game(home_team, away_team):
     away_attack_strength = strengths_df.loc[away_team]['Away Attack Strength']
     away_defense_strength = strengths_df.loc[away_team]['Away Defense Strength']
     
-    # calculate the expected goals for and goals against
-    home_expected_gf = home_attack_strength * away_defense_strength * predictions_df.loc['Average']['Home Goals For']
+    # Adjust the expected goals for with overall strength
+    home_expected_gf = (home_attack_strength * away_defense_strength * predictions_df.loc['Average']['Home Goals For']) * (1 - home_overall_strength) + home_overall_strength
+    away_expected_gf = (away_attack_strength * home_defense_strength * predictions_df.loc['Average']['Away Goals For']) * (1 - away_overall_strength) + away_overall_strength
     
-    away_expected_gf = away_attack_strength * home_defense_strength * predictions_df.loc['Average']['Away Goals For']
-    
-    away_prob = 0
+    # Initialize probabilities
     home_prob = 0
+    away_prob = 0
     tie_prob = 0
-    
-    for i in range(0, 15):
-        for j in range(0, 15):
-            prob = poisson.pmf(i, home_expected_gf) * poisson.pmf(j, away_expected_gf)
+
+    # Use NumPy to create Poisson probability arrays
+    home_poisson = poisson.pmf(np.arange(14), home_expected_gf)
+    away_poisson = poisson.pmf(np.arange(14), away_expected_gf)
+
+    # Calculate probabilities
+    for i in range(14):
+        for j in range(14):
+            prob = home_poisson[i] * away_poisson[j]
+
             if i > j:
                 home_prob += prob
             elif j > i:
                 away_prob += prob
             else:
                 tie_prob += prob
-                
-    away_prob = away_prob + (tie_prob / 2)
-    home_prob = home_prob + (tie_prob / 2)
+
+    # Distribute the tie probability evenly between the home and away win probabilities
+    away_prob += tie_prob / 2
+    home_prob += tie_prob / 2
                 
     return home_prob, away_prob , home_expected_gf , away_expected_gf
+
 
 # print a heatmap of the team's strengths
 def illustrate_strengths():
     plt.figure(figsize = (13, 8))
     sns.heatmap(strengths_df.sort_values(by = 'ELO', ascending = False), annot = True)
     plt.show()
-
-# print(predict_game('Boston Bruins', 'Edmonton Oilers'))
-# print(predict_game('Detroit Red Wings', 'Philadelphia Flyers'))
-# print(predict_game('Boston Bruins', 'Colorado Avalanche'))
-
-# illustrate_strengths()
 
 # =============================================== [--- Odds ---] ===============================================
 
@@ -435,23 +385,21 @@ def get_odds(home_team, away_team):
     home_prob, away_prob , home_goals, away_goals = predict_game(home_team, away_team)
     
     away_odds = round(1 / away_prob, 2)
-    home_odds = round(1 / home_prob, 2)
+    home_odds = round(1 / home_prob , 2)
     
     return home_odds , away_odds , home_goals , away_goals
 
-def clean_odds():
+def clean_odds(date):
     odds_api_key = '8be3ba1d05ea7d3cda1d4ec6953e78c9'
     odds_endpoint = 'https://api.the-odds-api.com/v4/sports/icehockey_nhl/odds'
 
-
-# Get the odds for today's NHL games
     params = {
         'regions': 'us',
         'oddsFormat': 'american',
         'dateFormat': 'iso',
         'apiKey': odds_api_key,
         'sport': 'icehockey_nhl',
-        'date': today, 
+        'date': date, 
         'Markets' : 'h2h', 
         'Bookmakers' : 'bet365'
     }
@@ -491,12 +439,7 @@ def calculate_picks(odds):
         print("Home Score : ", home_goals , "home vegas odds : ", given_home_odds, "My odds :", decimal_to_american(my_home_odds))
         
         
-odds = clean_odds()
+odds = clean_odds(today)
 calculate_picks(odds)
-
-# print(get_odds('Boston Bruins', 'Edmonton Oilers'))
-# print(get_odds('Detroit Red Wings', 'Philadelphia Flyers'))
-# print(get_odds('Boston Bruins', 'Colorado Avalanche'))
-
 
 print("Code Completed.")
