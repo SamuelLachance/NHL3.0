@@ -372,7 +372,7 @@ def illustrate_strengths():
 
 # =============================================== [--- Odds ---] ===============================================
 
-api_key = '74a13ca8f52c11c2476a5cc7db5d34d0' # api key for sports betting odds
+api_key = '8be3ba1d05ea7d3cda1d4ec6953e78c9' #'74a13ca8f52c11c2476a5cc7db5d34d0' # api key for sports betting odds
 
 def decimal_to_american(odds):
     if odds > 2:
@@ -401,7 +401,7 @@ def clean_odds(date):
         'sport': 'icehockey_nhl',
         'date': date, 
         'Markets' : 'h2h', 
-        'Bookmakers' : 'bet365'
+        'Bookmakers' : 'fanduel'
     }
 
     response_odds = requests.get(odds_endpoint, params=params)
