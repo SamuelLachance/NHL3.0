@@ -191,7 +191,7 @@ def get_team_from_team_name(elo, team):
     return "Devils"
 
 #downloadPastData() # if you want to download past data again
-#downloadCurrentData() # if you want to download current data again
+downloadCurrentData() # if you want to download current data again
 
 # ---------- Get Data ----------
 
@@ -300,6 +300,11 @@ def calculate_defense_strength(goals_against, average_goals_against, elo):
     goal_based_strength = goals_against / average_goals_against
     return goal_based_strength * (1 - elo) + elo
 
+def normalize_series(series):
+    min_value = series.min()
+    max_value = series.max()
+    return (series - min_value) / (max_value - min_value)
+
 strengths_df = pd.DataFrame(columns = ['Home Attack Strength', 'Home Defense Strength', 'Away Attack Strength', 'Away Defense Strength'])
 strengths_df['Team'] = predictions_df.index # add the team names
 strengths_df = strengths_df.set_index('Team') # set the index to the team names
@@ -313,10 +318,18 @@ strengths_df['Home Attack Strength'] = predictions_df.apply(lambda row: calculat
 strengths_df['Home Defense Strength'] = predictions_df.apply(lambda row: calculate_defense_strength(row['Home Goals Against'], predictions_df.loc['Average']['Home Goals Against'], strengths_df.loc[row.name]['ELO']), axis = 1)
 strengths_df['Away Attack Strength'] = predictions_df.apply(lambda row: calculate_attack_strength(row['Away Goals For'], predictions_df.loc['Average']['Away Goals For'], strengths_df.loc[row.name]['ELO']), axis = 1)
 strengths_df['Away Defense Strength'] = predictions_df.apply(lambda row: calculate_defense_strength(row['Away Goals Against'], predictions_df.loc['Average']['Away Goals Against'], strengths_df.loc[row.name]['ELO']), axis = 1)
-strengths_df['Overall Strength'] = strengths_df.apply(lambda row: (row['Home Attack Strength'] + row['Away Attack Strength']) - (row['Home Defense Strength'] + row['Away Defense Strength']), axis = 1)
 
-strengths_df['Overall Strength'] = strengths_df.apply(lambda row: row['Overall Strength'] / max(strengths_df['Overall Strength']), axis = 1)
 
+# Calculate the weighted overall strength
+attack_weight = 0.5
+defense_weight = 0.5
+strengths_df['Overall Strength'] = strengths_df.apply(
+    lambda row: (attack_weight * (row['Home Attack Strength'] + row['Away Attack Strength'])) -
+                (defense_weight * (row['Home Defense Strength'] + row['Away Defense Strength'])),
+    axis=1)
+
+# Normalize the overall strength to the range [0, 1]
+strengths_df['Overall Strength'] = normalize_series(strengths_df['Overall Strength'])
 
 # =============================================== [--- Predict Games  ---] ===============================================
 from scipy.stats import poisson
@@ -328,13 +341,18 @@ def predict_game(home_team, away_team):
     home_attack_strength = strengths_df.loc[home_team]['Home Attack Strength']
     home_defense_strength = strengths_df.loc[home_team]['Home Defense Strength']
     home_overall_strength = strengths_df.loc[home_team]['Overall Strength']
-    away_overall_strength = strengths_df.loc[away_team]['Overall Strength']
+
     away_attack_strength = strengths_df.loc[away_team]['Away Attack Strength']
     away_defense_strength = strengths_df.loc[away_team]['Away Defense Strength']
-    
+    away_overall_strength = strengths_df.loc[away_team]['Overall Strength']
+
+    # Define weights for overall strength
+    overall_strength_weight = 0.5
+    attack_defense_strength_weight = 1 - overall_strength_weight
+
     # Adjust the expected goals for with overall strength
-    home_expected_gf = (home_attack_strength * away_defense_strength * predictions_df.loc['Average']['Home Goals For']) * (1 - home_overall_strength) + home_overall_strength
-    away_expected_gf = (away_attack_strength * home_defense_strength * predictions_df.loc['Average']['Away Goals For']) * (1 - away_overall_strength) + away_overall_strength
+    home_expected_gf = (home_attack_strength * away_defense_strength * predictions_df.loc['Average']['Home Goals For']) * attack_defense_strength_weight + (home_overall_strength * overall_strength_weight)
+    away_expected_gf = (away_attack_strength * home_defense_strength * predictions_df.loc['Average']['Away Goals For']) * attack_defense_strength_weight + (away_overall_strength * overall_strength_weight)
     
     # Initialize probabilities
     home_prob = 0
